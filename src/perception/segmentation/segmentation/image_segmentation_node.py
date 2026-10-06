@@ -4,9 +4,9 @@ Runs PSPNet (mmseg v1.x) on 4 CARLA cameras in a round-robin background thread.
 Callbacks only store the latest frame — no blocking inference in the spin thread.
 
 Modified by Siddarth Nandyala <siddarth.nandyala@utdallas.edu>: moved inference
-onto cuda:1 (kept off GPU0 to avoid contending with CARLA's own rendering),
-and added the stamp-gated re-processing guard so a cached frame isn't
-reprocessed/re-published faster than new camera frames actually arrive.
+onto the GPU with the most available memory, and added the stamp-gated
+re-processing guard so a cached frame isn't reprocessed/re-published faster
+than new camera frames actually arrive.
 """
 
 import threading
@@ -17,6 +17,7 @@ import numpy as np
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from mmseg.apis import inference_model, init_model
+from helpers.gpu import select_cuda_device
 
 # input_topic → output_topic (bridge remaps /carla/hero/rgb_*/image → /cameras/camera*)
 CAMERAS = [
@@ -65,8 +66,9 @@ class ImageSegmentationNode(Node):
 
     def __init__(self):
         super().__init__('image_segmentation_node')
-        self.get_logger().info("Loading PSPNet on GPU (cuda:1, kept off GPU0 to avoid contending with CARLA rendering)…")
-        self.model  = init_model(_CONFIG, _CKPT, device="cuda:1")
+        device = select_cuda_device()
+        self.get_logger().info(f"Loading PSPNet on {device}…")
+        self.model = init_model(_CONFIG, _CKPT, device=str(device))
         self.bridge = CvBridge()
         self.get_logger().info('PSPNet ready.')
 

@@ -76,6 +76,7 @@ from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from sensor_msgs.msg import Image
+from helpers.gpu import select_cuda_device
 
 from segmentation.yolopv2_preprocessing import letterbox, unletterbox_mask
 
@@ -111,10 +112,12 @@ class Yolopv2LaneNode(Node):
 
     def __init__(self):
         super().__init__('yolopv2_lane_node')
-        self.get_logger().info("Loading YOLOPv2 on GPU (cuda:1, same as PSPNet, kept off GPU0)…")
-        self.device = torch.device('cuda:1')
+        self.device = select_cuda_device()
+        self.get_logger().info(f"Loading YOLOPv2 on {self.device}…")
         self.model = torch.jit.load(_WEIGHTS)
-        self.model = self.model.to(self.device).half()
+        self.model = self.model.to(self.device)
+        if self.device.type == "cuda":
+            self.model = self.model.half()
         self.model.eval()
         self.bridge = CvBridge()
         self.get_logger().info('YOLOPv2 ready.')
@@ -169,7 +172,10 @@ class Yolopv2LaneNode(Node):
 
         padded, ratio, pad = letterbox(raw)
         img_in = padded[:, :, ::-1].transpose(2, 0, 1).copy()  # BGR -> RGB, HWC -> CHW
-        img_t = torch.from_numpy(img_in).to(self.device).half() / 255.0
+        img_t = torch.from_numpy(img_in).to(self.device)
+        if self.device.type == "cuda":
+            img_t = img_t.half()
+        img_t = img_t / 255.0
         img_t = img_t.unsqueeze(0)
 
         with torch.no_grad():
